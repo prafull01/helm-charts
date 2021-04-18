@@ -4,7 +4,7 @@ Status: Draft
 
 Start Date: 19-04-2021
 
-Authors: @prafull01, @abhishek, @madhurnawandar
+Authors: @prafull01, @abhisek-dwivedi, @madhurnawandar
 
 # Summary
 
