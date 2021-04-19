@@ -66,12 +66,21 @@ This section specifies the suggested changes around user input in helm chart
    
 2. If value for `tls.certs.generate.caSecret` is provided, secret should exist in the cockroach db install namespace.
    
-3. Value for `tls.certs.generate.caCertDuration` should be greater than the value for `tls.certs.generate.clientCertDuration` and `tls.certs.generate.nodeCertDuration`
+3. Value for `tls.certs.generate.caCertDuration` should be at least two months greater than the value for `tls.certs.generate.clientCertDuration` 
+   and `tls.certs.generate.nodeCertDuration`.
+
 
 ## Implementation Details 
 
 ## Helm Flow:
 
+* Following components are created for certificate generation and rotation:
+  1. ServiceAccount: For `pre-install` job. (deleted after pre-install hook succeeds)
+  2. Role: For adding role to perform operation on secret resource. (deleted after pre-install hook succeeds)
+  3. RoleBinding: For assigning permission to ServiceAccount for secret related operation. (deleted after pre-install hook succeeds)
+  4. Job: For generate self-signed CA, nodeSecret and clientSecret. (deleted after pre-install hook succeeds)
+  5. Cron-job: For certificate rotation.   
+    
 * A `pre-install` [chart hook](https://helm.sh/docs/topics/charts_hooks/) will be used to create a job that runs before all the helm chart resources are installed. 
   * This job will only run when `tls.certs.generate.enabled` is set to `true`.
   * This job will take care of generating all the required certificates.
@@ -126,23 +135,25 @@ This section specifies the suggested changes around user input in helm chart
   is set.
   * Data to these secrets will be populated in the `pre-install` job.
   * In case CA is provided by the user, then `cockroachdb-ca` secret is skipped.
+  * Annotation is set with `resourceVersion` or hash calculated on the CA secret (both user given CA and self-singed)
+  * Annotation is set on all the secrets created by cockroach db; eg: `managed-by: crdb`
+  * Annotations are set on CA, nodeSecret and clientSecret with the certificate generation time and duration info.
   * Empty secrets are added to allow proper cleanup during helm uninstall.
 
 * A cron-job will be created in helm chart when `tls.certs.generate.rotateCerts` is set.
   * This cron-job will run periodically to rotate the certificates.
-  * The schedule of the cron-job will be the minimum of `nodeCertDuration` and `clientCertDuration`, minus a week.
-  * On every schedule run, it will
-  check if there is any certificate which is going to expire before the next scheduled run, if yes then it will renew the certificates.
+  * The schedule of the cron-job will be of two months.
+  * On every schedule run, it will check if there is any certificate which is going to expire before the next scheduled run, 
+    if yes then it will renew the certificates.
   
   * If the CA is created by cockroach db:
-    * check the CA certificate expiry and if the expiry is less than the next cronjob schedule,then do the certificate rotation.
-    * If CA is rotated, then the node certificates and client certificates need to be rotated.
+    * check the CA certificate expiry and if the expiry is less than the next cronjob schedule,then do the CA certificate rotation.
+    * If CA is rotated, then the node certificates and client certificates are rotated in the next scheduled run.
 
-    `TODO: Discuss about the 2 crons, one for CA rotation few months prior to Node cert rotation`
   * If the CA is provided by user:
     * CA cert rotation is not considered at all.
-    * Check the for expiry of node certificates and client certificates. If certificate expiry
-    is less than the next scheduled run, then do cert rotation.
+    * Check the for expiry of node certificates and client certificates. If certificate expiry is less than the next scheduled run,
+      then do cert rotation.
     
   * <b>The cron-job will use the same `pre-install` job image for certificate rotations. The `pre-install` job image binary will
   have an argument `--rotate` for handling certificate rotation.</b>
@@ -159,24 +170,42 @@ This section specifies the suggested changes around user input in helm chart
 ## Certificate Generation cases during helm upgrade:
 
 In case of helm upgrade:
-* if certificate management method is changed from cert generation to `cert-manager` or `default manual k8s CSR approval`,
-  do nothing as this `pre-install` job  won't be triggered.
-  
-* if same cert management method is used, then `pre-install` job will check:
-  * When `caCertDuration`, `nodeCertDuration` or `clientCertDuration` is changed: 
-    * if any of the certificate duration is decreased:
-      * TODO: What to do when any of the cert duration is decreased compared to last value
-    * if `caCertDuration` is increased:
-      * generate new CA. Sign nodeCert and clientCert with the new CA and trigger refresh command.
-    * if `nodeCertDuration` is increased:
-      * generate  new nodeCert and trigger refresh command
-    * if `clientCertDuration`is increased:
-      * generate new clientCert.
-    
-  * When value of `caProvided` is changed:
-    * if certificate management method is changed from cert generation to `custom user CA`, generate new nodeCert and clientCert
-  singed by custom user CA and trigger refresh CA.
 
+* User has given CA and changes contents of the CA secret:
+  * Check if the current value `resourceVersion` or hast matches with the annotation value. if annotation does not match, so this is a new CA scenario.
+* User has given CA and changes the secret name: 
+  * Annotation will not be found, so this is a new CA scenario.
+* User had not given CA previously, but now has given the CA:
+  * Annotation will not be found, so this is a new CA scenario
+* If user changes duration of CA: 
+  * Identify and compare using existing annotation on CA secret and current value, this will be a case for certificate rotation. This will only 
+    be case when the CA is managed-by cockroach db.
+* User changes duration of all certificates: 
+  * Compare old and new CA duration from CA secret annotation values and current value. This will be a case for certificate rotation. 
+  * Rotate CA certificate and add an annotation on CA secret with the date of rotation. 
+  * Add annotations on node and client certs specifying the new expected duration and `to-be-rotated: true`. 
+  * These secret certificates will be renewed in next cron cycle and `to-be-rotated:true` and expected duration annotations will be removed.
+* User only changes the duration of either node or client certificate:
+  * Identify and compare duration with existing annotation value and current value and renew node or client certificate.
+* User certificate management method is changed from cert generation to `cert-manager` or `default manual k8s CSR approval`:
+  * Do nothing as this `pre-install` job  won't be triggered.
+
+## Periodic Rotation scenarios:
+* CA cert is near expiry: This will be identified using the generation time put on the CA secret. This will lead to cert rotation scenario.
+* Node or client cert near expiry: This will be identified using the generation time put on the respective secret. This will lead to regeneration of node or client certificate
+
+### Certificate Rotation scenario:
+
+* Only renew CA cert by combining new CA along with the old CA.
+* Add annotation on CA secret with the date of rotation.
+* Add annotations on node and client certs`to-be-rotated: true`.
+* Do not process node and client cert.
+* On next scheduled iteration, if `to-be-rotated: true` annotation found , then we renew of node or client certificate remove the annotation from. 
+* Remove `to-be-rotated: true` from nodeSecret and client Secret.
+
+
+
+`Not required`
 `TODO: Do we need to check below conditions if same cert generation method is used and duration is also?
      I think CA secret, nodeSecret and clientSecret are already populated with certificate info, and no need to update
     cert. Discuss` 
