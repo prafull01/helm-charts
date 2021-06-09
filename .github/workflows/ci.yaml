@@ -1,0 +1,39 @@
+name: Plugin Packages CI
+on:
+  push:
+    branches:
+      - 'master'
+      - 'cert-manager-feature-branch'
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - 'master'
+      - 'cert-manager-feature-branch'
+
+jobs:
+  # pre-build job run golangci-lint
+  go-lint:
+    name: 'Golint'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: v1.30
+  helm:
+    name: Helm
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Get repositories
+        uses: hiberbee/github-action-helm@latest
+
+      - name: Lint chart
+        run: helm lint cockroachdb
+        working-directory: .
