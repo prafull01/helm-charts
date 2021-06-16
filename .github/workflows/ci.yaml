@@ -73,7 +73,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
-          tags: velotio-playground/self-signer-utility:latest
+          tags: gcr.io/velotio-playground/self-signer-utility:latest
           file: build/docker-image/Dockerfile
 
   helm-integration:
