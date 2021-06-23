@@ -88,10 +88,10 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build
-        run: docker build -f ./build/docker-image/Dockerfile -t ladhaprafull/cockroach-self-signer-cert:${{github.event.pull_request.head.ref}} .
+        run: make build-self-signer
 
       - name: Push
-        run: docker push ladhaprafull/cockroach-self-signer-cert:${{github.event.pull_request.head.ref}}
+        run: make push-self-signer
 
 
   # pre job to run helm integration tests

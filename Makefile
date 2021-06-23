@@ -1,4 +1,4 @@
-REPOSITORY ?= cockroachdb/cockroach-self-signer-cert
+REPOSITORY ?= ladhaprafull/cockroach-self-signer-cert
 TAG ?= $(shell git rev-parse HEAD)
 
 .DEFAULT_GOAL := all
@@ -25,3 +25,4 @@ build-self-signer:
 
 push-self-signer:
 	docker push ${REPOSITORY}:${TAG}
+
