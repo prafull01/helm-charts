@@ -30,4 +30,4 @@ install-cockroach:
 	sudo apt-get install wget -y
 	wget https://binaries.cockroachdb.com/cockroach-v20.2.5.linux-amd64.tgz
 	tar zxf cockroach-v20.2.5.linux-amd64.tgz
-	cp cockroach-v20.2.5.linux-amd64/cockroach /usr/local/bin/                                                                  
+	sudo cp cockroach-v20.2.5.linux-amd64/cockroach /usr/local/bin/                                                                  
