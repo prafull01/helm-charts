@@ -7,7 +7,6 @@ import (
 	"github.com/gruntwork-io/terratest/modules/k8s"
 	"github.com/gruntwork-io/terratest/modules/shell"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
-	"os"
 	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,7 +23,6 @@ var (
 	k8sClient, _   = client.New(cfg, client.Options{})
 	releaseName    = "crdb-test"
 	customCASecret = "custom-ca-secret"
-	imageTag       = os.Getenv("TAG")
 )
 
 func TestCockroachDbHelmInstall(t *testing.T) {
@@ -54,12 +52,20 @@ func TestCockroachDbHelmInstall(t *testing.T) {
 	// Setup the args. For this test, we will set the following input values:
 	options := &helm.Options{
 		KubectlOptions: k8s.NewKubectlOptions("", "", namespaceName),
-		SetValues: map[string]string{
-			"tls.selfSigner.image.tag": imageTag,
-		},
 	}
 
 	defer helm.Delete(t, options, releaseName, true)
+	defer func() {
+		s, err := k8s.RunKubectlAndGetOutputE(t, kubectlOptions, []string{"get", "nodes"}...)
+		require.NoError(t, err)
+		t.Log(s)
+		s, err = k8s.RunKubectlAndGetOutputE(t, kubectlOptions, []string{"get", "pods"}...)
+		require.NoError(t, err)
+		t.Log(s)
+		s, err = k8s.RunKubectlAndGetOutputE(t, kubectlOptions, []string{"describe", "pods"}...)
+		require.NoError(t, err)
+		t.Log(s)
+	}()
 
 	// Deploy the chart using `helm install`. Note that we use the version without `E`, since we want to assert the
 	// install succeeds without any errors.
@@ -127,13 +133,24 @@ func TestCockroachDbHelmInstallWithCAProvided(t *testing.T) {
 	options := &helm.Options{
 		KubectlOptions: k8s.NewKubectlOptions("", "", namespaceName),
 		SetValues: map[string]string{
-			"tls.selfSigner.image.tag":        imageTag,
 			"tls.certs.selfSigner.caProvided": "true",
 			"tls.certs.selfSigner.caSecret":   customCASecret,
 		},
 	}
 
 	defer helm.Delete(t, options, releaseName, true)
+
+	defer func() {
+		s, err := k8s.RunKubectlAndGetOutputE(t, kubectlOptions, []string{"get", "nodes"}...)
+		require.NoError(t, err)
+		t.Log(s)
+		s, err = k8s.RunKubectlAndGetOutputE(t, kubectlOptions, []string{"get", "pods"}...)
+		require.NoError(t, err)
+		t.Log(s)
+		s, err = k8s.RunKubectlAndGetOutputE(t, kubectlOptions, []string{"describe", "pods"}...)
+		require.NoError(t, err)
+		t.Log(s)
+	}()
 
 	// Deploy the chart using `helm install`. Note that we use the version without `E`, since we want to assert the
 	// install succeeds without any errors.

@@ -303,7 +303,7 @@ storage:
   persistentVolume:
     enabled: true
 
-    size: 100Gi
+    size: 1Gi
 
     # If defined, then `storageClassName: <storageClass>`.
     # If set to "-", then `storageClassName: ""`, which disables dynamic
@@ -414,11 +414,11 @@ tls:
   selfSigner:
     # Image Placeholder for the selfSigner utility. This will be changed once the CI workflows for the image is in place.
     image:
-      repository: cockroachlabs-helm-charts/cockroach-self-signer-cert
-      tag: "0.1"
+      repository: ladhaprafull/cockroach-self-signer-cert
+      tag: "19e216aa2c3c6f8c59d365348368c32b38a4abbd"
       pullPolicy: IfNotPresent
       credentials: {}
-      registry: gcr.io
+      registry: docker.io
       # username: john_doe
       # password: changeme
 
