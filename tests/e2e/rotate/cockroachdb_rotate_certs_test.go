@@ -24,7 +24,7 @@ var (
 	imageTag       = os.Getenv("TAG")
 )
 
-func TestCockroachDbNodeAndClientCert(t *testing.T) {
+func TestCockroachDbRotateCertificates(t *testing.T) {
 	// Path to the helm chart we will test
 	helmChartPath, err := filepath.Abs("../../../cockroachdb")
 	require.NoError(t, err)
@@ -80,11 +80,12 @@ func TestCockroachDbNodeAndClientCert(t *testing.T) {
 	time.Sleep(20 * time.Second)
 	testutil.RequireDatabaseToFunction(t, crdbCluster, false)
 
+	t.Log("Rotate the Client and Node certificate for the CRDB")
 	clientCert := k8s.GetSecret(t, kubectlOptions, crdbCluster.ClientSecret)
 	nodeCert := k8s.GetSecret(t, kubectlOptions, crdbCluster.NodeSecret)
-	testutil.RequireToRunRotateJob(t, crdbCluster, helmValues)
-	testutil.RequireCertRotateJobToBeCompleted(t, "rotate-cert-job", crdbCluster, 500*time.Second)
-	time.Sleep(20 * time.Second)
+	testutil.RequireToRunRotateJob(t, crdbCluster, helmValues, false)
+	testutil.RequireCertRotateJobToBeCompleted(t, "client-node-certificate-rotate", crdbCluster, 500*time.Second)
+	//time.Sleep(20 * time.Second)
 	testutil.RequireDatabaseToFunction(t, crdbCluster, true)
 
 	newClientCert := k8s.GetSecret(t, kubectlOptions, crdbCluster.ClientSecret)
@@ -93,4 +94,16 @@ func TestCockroachDbNodeAndClientCert(t *testing.T) {
 	t.Log("Verify that certificate duration is changed")
 	require.NotEqual(t, clientCert.Annotations["certificate-valid-upto"], newClientCert.Annotations["certificate-valid-upto"])
 	require.NotEqual(t, nodeCert.Annotations["certificate-valid-upto"], newNodeCert.Annotations["certificate-valid-upto"])
+
+	t.Log("Rotate the CA certificate for the CRDB")
+	caCert := k8s.GetSecret(t, kubectlOptions, crdbCluster.CaSecret)
+	testutil.RequireToRunRotateJob(t, crdbCluster, helmValues, true)
+	testutil.RequireCertRotateJobToBeCompleted(t, "ca-certificate-rotate", crdbCluster, 500*time.Second)
+	//time.Sleep(20 * time.Second)
+	testutil.RequireDatabaseToFunction(t, crdbCluster, true)
+
+	newCaCert := k8s.GetSecret(t, kubectlOptions, crdbCluster.ClientSecret)
+
+	t.Log("Verify that CA certificate duration is changed")
+	require.NotEqual(t, caCert.Annotations["certificate-valid-upto"], newCaCert.Annotations["certificate-valid-upto"])
 }

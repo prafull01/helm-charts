@@ -263,13 +263,41 @@ func verifyCertificate(t *testing.T, caCert []byte, cert *x509.Certificate) {
 	}
 }
 
-func RequireToRunRotateJob(t *testing.T, crdbCluster CockroachCluster, values map[string]string) {
+func RequireToRunRotateJob(t *testing.T, crdbCluster CockroachCluster, values map[string]string, caRotate bool) {
+	var args []string
+	var jobName string
 	backoffLimit := int32(1)
+	if caRotate {
+		jobName = "ca-certificate-rotate"
+		args = []string{
+			"rotate",
+			"--ca",
+			fmt.Sprintf("--ca-duration=%s", values["tls.certs.selfSigner.caCertDuration"]),
+			fmt.Sprintf("--ca-expiry=%s", values["tls.certs.selfSigner.caCertExpiryWindow"]),
+			"--ca-cron=\"0 0 */29 * *\"",
+			"--readiness-wait=30s",
+		}
+	} else {
+		jobName = "client-node-certificate-rotate"
+		args = []string{
+			"rotate",
+			fmt.Sprintf("--ca-duration=%s", values["tls.certs.selfSigner.caCertDuration"]),
+			fmt.Sprintf("--ca-expiry=%s", values["tls.certs.selfSigner.caCertExpiryWindow"]),
+			"--client",
+			fmt.Sprintf("--client-duration=%s", values["tls.certs.selfSigner.clientCertDuration"]),
+			fmt.Sprintf("--client-expiry=%s", values["tls.certs.selfSigner.clientCertExpiryWindow"]),
+			"--node",
+			fmt.Sprintf("--node-duration=%s", values["tls.certs.selfSigner.nodeCertDuration"]),
+			fmt.Sprintf("--node-expiry=%s", values["tls.certs.selfSigner.nodeCertExpiryWindow"]),
+			"--node-client-cron=\"0 0 */26 * *\"",
+			"--readiness-wait=30s",
+		}
+	}
 	imageName := fmt.Sprintf("gcr.io/cockroachlabs-helm-charts/cockroach-self-signer-cert:%s", values["tls.selfSigner.image.tag"])
 	job := &batchv1.Job{
 		TypeMeta:   metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:                       "rotate-cert-job",
+			Name:                       jobName,
 			Namespace:                  crdbCluster.Namespace,
 		},
 		Spec:       batchv1.JobSpec{
@@ -282,19 +310,7 @@ func RequireToRunRotateJob(t *testing.T, crdbCluster CockroachCluster, values ma
 					Containers:                    []corev1.Container{{
 						Name:                     "cert-rotate-job",
 						Image:                    imageName,
-						Args:                     []string{
-							"rotate",
-							fmt.Sprintf("--ca-duration=%s", values["tls.certs.selfSigner.caCertDuration"]),
-							fmt.Sprintf("--ca-expiry=%s", values["tls.certs.selfSigner.caCertExpiryWindow"]),
-							"--client",
-							fmt.Sprintf("--client-duration=%s", values["tls.certs.selfSigner.clientCertDuration"]),
-							fmt.Sprintf("--client-expiry=%s", values["tls.certs.selfSigner.clientCertExpiryWindow"]),
-							"--node",
-							fmt.Sprintf("--node-duration=%s", values["tls.certs.selfSigner.nodeCertDuration"]),
-							fmt.Sprintf("--node-expiry=%s", values["tls.certs.selfSigner.nodeCertExpiryWindow"]),
-							"--node-client-cron=\"0 0 */26 * *\"",
-							"--readiness-wait=30s",
-						},
+						Args:                     args,
 						WorkingDir:               "",
 						Ports:                    nil,
 						EnvFrom:                  nil,
