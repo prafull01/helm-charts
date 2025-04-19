@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -86,6 +88,20 @@ func RequireCRDBClusterToBeReadyEventuallyTimeout(t *testing.T, opts *k8s.Kubect
 		return true, nil
 	})
 	require.NoError(t, err)
+}
+
+func RequirePodToBeCreatedAndReady(t *testing.T, opts *k8s.KubectlOptions, podName string, timeout time.Duration) {
+	require.NoError(t, wait.Poll(10*time.Second, timeout, func() (done bool, err error) {
+		pod, err := k8s.GetPodE(t, opts, podName)
+		if err != nil {
+			return false, nil
+		}
+		if !k8s.IsPodAvailable(pod) {
+			t.Logf("pod %s not ready", pod.Name)
+			return false, nil
+		}
+		return true, nil
+	}))
 }
 
 func logPods(ctx context.Context, sts *appsv1.StatefulSet, cfg *rest.Config, t *testing.T) {
@@ -169,20 +185,6 @@ func getDBConn(t *testing.T, crdbCluster CockroachCluster, dbName string, podNam
 		db.Close()
 	})
 	return db
-}
-
-// RequireDatabaseToFunction creates a table and insert two rows.
-func RequireDatabaseToFunction(t *testing.T, crdbCluster CockroachCluster, dbName string) {
-	db := getDBConn(t, crdbCluster, dbName, "")
-	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS accounts (id INT PRIMARY KEY, balance INT)"); err != nil {
-		t.Fatal(err)
-	}
-
-	// Insert two rows into the "accounts" table.
-	if _, err := db.Exec(
-		"INSERT INTO accounts (id, balance) VALUES (1, 1000), (2, 250)"); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // RequireCRDBDatabaseToFunction creates a database, a table and insert two rows.
@@ -574,4 +576,28 @@ func WaitUntilPodDeleted(
 		log.Printf("Timedout waiting for Pod to be deleted: %s\n", err)
 	}
 	log.Println(message)
+}
+
+func PatchHelmValues(inputValues map[string]string) map[string]string {
+	overrides := map[string]string{
+		// Override the persistent storage size to 1Gi so that we do not run out of space.
+		"storage.persistentVolume.size": "1Gi",
+		// Override the terminationGracePeriodSeconds from 300s to 30 as it makes pod delete take longer.
+		"statefulset.terminationGracePeriodSeconds": "30",
+	}
+
+	for k, v := range overrides {
+		inputValues[k] = v
+	}
+
+	return inputValues
+}
+
+func GetGitRoot() string {
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	out, err := cmd.Output()
+	if err != nil {
+		panic(fmt.Errorf("failed to find git root: %w", err))
+	}
+	return strings.TrimSpace(string(out))
 }

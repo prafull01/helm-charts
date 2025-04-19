@@ -51,28 +51,35 @@ func To[T any](v T) *T {
 	return &v
 }
 
-func yamlToDisk(path string, data any) error {
+func yamlToDisk(path string, data []any) error {
 	file, err := os.Create(path)
 	if err != nil {
 		return errors.Wrap(err, "creating file")
 	}
-	bytes, err := yaml.Marshal(data)
-	if err != nil {
-		return errors.Wrap(err, "marshalling yaml")
-	}
-	// Hack: drop creationTimestamp: null lines. See
-	// https://github.com/kubernetes/kubernetes/issues/67610 for details.
-	lines := strings.Split(string(bytes), "\n")
-	filteredLines := []string{}
-	timestampRE := regexp.MustCompile(`\s*creationTimestamp: null`)
-	for _, line := range lines {
-		if !timestampRE.MatchString(line) {
-			filteredLines = append(filteredLines, line)
+
+	for i := range data {
+		bytes, err := yaml.Marshal(data[i])
+		if err != nil {
+			return errors.Wrap(err, "marshalling yaml")
+		}
+		// Hack: drop creationTimestamp: null lines. See
+		// https://github.com/kubernetes/kubernetes/issues/67610 for details.
+		lines := strings.Split(string(bytes), "\n")
+		filteredLines := []string{}
+		timestampRE := regexp.MustCompile(`\s*creationTimestamp: null`)
+		for _, line := range lines {
+			if !timestampRE.MatchString(line) {
+				filteredLines = append(filteredLines, line)
+			}
+		}
+		if i > 0 {
+			_, _ = file.WriteString("---\n")
+		}
+		if _, err := file.Write([]byte(strings.Join(filteredLines, "\n"))); err != nil {
+			return errors.Wrap(err, "writing yaml")
 		}
 	}
-	if _, err := file.Write([]byte(strings.Join(filteredLines, "\n"))); err != nil {
-		return errors.Wrap(err, "writing yaml")
-	}
+
 	return nil
 }
 
@@ -199,15 +206,15 @@ func buildNodeSpecFromHelm(sts *appsv1.StatefulSet, nodeName string, input parse
 		}...),
 		ResourceRequirements: sts.Spec.Template.Spec.Containers[0].Resources,
 		Image:                sts.Spec.Template.Spec.Containers[0].Image,
-		ServiceAccountName:   "cockroachdb",
+		ServiceAccountName:   sts.Name,
 		GRPCPort:             &input.grpcPort,
 		SQLPort:              &input.sqlPort,
 		HTTPPort:             &input.httpPort,
 		Certificates: v1alpha1.Certificates{
 			ExternalCertificates: &v1alpha1.ExternalCertificates{
 				CAConfigMapName:         sts.Name + "-ca",
-				NodeSecretName:          sts.Name + "-node-certs",
-				RootSQLClientSecretName: sts.Name + "-client-certs",
+				NodeSecretName:          sts.Name + "-node-secret",
+				RootSQLClientSecretName: sts.Name + "-client-secret",
 			},
 		},
 		Affinity:               sts.Spec.Template.Spec.Affinity,
@@ -256,8 +263,8 @@ func buildHelmValuesFromHelm(
 			"certificates": map[string]interface{}{
 				"externalCertificates": map[string]interface{}{
 					"caConfigMapName":         sts.Name + "-ca",
-					"nodeSecretName":          sts.Name + "-node-certs",
-					"rootSqlClientSecretName": sts.Name + "-client-certs",
+					"nodeSecretName":          sts.Name + "-node-secret",
+					"rootSqlClientSecretName": sts.Name + "-client-secret",
 				},
 			},
 			"affinity":                      sts.Spec.Template.Spec.Affinity,
@@ -450,7 +457,7 @@ func generateUpdatedPublicServiceConfig(ctx context.Context, clientset kubernete
 		Kind:       "Service",
 	}
 
-	err = yamlToDisk(filepath.Join(outputDir, publicSvcYaml), svc)
+	err = yamlToDisk(filepath.Join(outputDir, publicSvcYaml), []any{svc})
 	if err != nil {
 		panic(err)
 	}

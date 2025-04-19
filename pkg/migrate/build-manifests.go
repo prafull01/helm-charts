@@ -129,14 +129,14 @@ func (m *Manifest) FromPublicOperator() error {
 			},
 			Spec: nodeSpec,
 		}
-		if err := yamlToDisk(filepath.Join(m.outputDir, fmt.Sprintf("crdbnode-%d.yaml", nodeIdx)), crdbNode); err != nil {
+		if err := yamlToDisk(filepath.Join(m.outputDir, fmt.Sprintf("crdbnode-%d.yaml", nodeIdx)), []any{crdbNode}); err != nil {
 			return errors.Wrap(err, "writing crdbnode manifest to disk")
 		}
 	}
 
 	helmValues := buildHelmValuesFromOperator(publicCluster, m.cloudProvider, m.cloudRegion, m.namespace, flags)
 
-	if err := yamlToDisk(filepath.Join(m.outputDir, "values.yaml"), helmValues); err != nil {
+	if err := yamlToDisk(filepath.Join(m.outputDir, "values.yaml"), []any{helmValues}); err != nil {
 		return errors.Wrap(err, "writing helm values to disk")
 	}
 
@@ -202,16 +202,20 @@ func (m *Manifest) FromHelmChart() error {
 			},
 			Spec: nodeSpec,
 		}
-		if err := yamlToDisk(filepath.Join(m.outputDir, fmt.Sprintf("crdbnode-%d.yaml", nodeIdx)), crdbNode); err != nil {
+		if err := yamlToDisk(filepath.Join(m.outputDir, fmt.Sprintf("crdbnode-%d.yaml", nodeIdx)), []any{crdbNode}); err != nil {
 			return errors.Wrap(err, "writing crdbnode manifest to disk")
 		}
 	}
 
 	helmValues := buildHelmValuesFromHelm(sts, m.cloudProvider, m.cloudRegion, m.namespace, input)
 
-	if err := yamlToDisk(filepath.Join(m.outputDir, "values.yaml"), helmValues); err != nil {
+	if err := yamlToDisk(filepath.Join(m.outputDir, "values.yaml"), []any{helmValues}); err != nil {
 		return errors.Wrap(err, "writing helm values to disk")
 	}
 
 	return nil
+}
+
+func (m *Manifest) rbacTemplate() {
+
 }

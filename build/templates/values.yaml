@@ -73,7 +73,7 @@ conf:
   log:
     enabled: false
     # https://www.cockroachlabs.com/docs/v21.1/configure-logs
-    config:
+    config: {}
       # file-defaults:
       #   dir: /cockroach/cockroach-logs
       # fluent-defaults:
