@@ -171,6 +171,7 @@ func (m *Manifest) FromHelmChart() error {
 		return err
 	}
 
+	input.pcrSpec = detectPCRFromInitJob(m.clientset, sts.Name, m.namespace)
 	for nodeIdx := int32(0); nodeIdx < *sts.Spec.Replicas; nodeIdx++ {
 		podName := fmt.Sprintf("%s-%d", sts.Name, nodeIdx)
 		pod, err := m.clientset.CoreV1().Pods(m.namespace).Get(ctx, podName, metav1.GetOptions{})
@@ -182,7 +183,7 @@ func (m *Manifest) FromHelmChart() error {
 			return errors.Newf("pod %s isn't scheduled to a node", podName)
 		}
 
-		nodeSpec := buildNodeSpecFromHelm(sts, pod.Spec.NodeName, input)
+		nodeSpec := buildNodeSpecFromHelm(sts, pod.Spec.NodeName, input, m.namespace, m.clientset)
 		crdbNode := v1alpha1.CrdbNode{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "CrdbNode",
@@ -209,9 +210,9 @@ func (m *Manifest) FromHelmChart() error {
 		}
 	}
 
-	helmValues := buildHelmValuesFromHelm(sts, m.cloudProvider, m.cloudRegion, m.namespace, input)
+	newHelmValues := buildHelmValuesFromHelm(sts, m.cloudProvider, m.cloudRegion, m.namespace, input)
 
-	if err := yamlToDisk(filepath.Join(m.outputDir, "values.yaml"), []any{helmValues}); err != nil {
+	if err := yamlToDisk(filepath.Join(m.outputDir, "values.yaml"), []any{newHelmValues}); err != nil {
 		return errors.Wrap(err, "writing helm values to disk")
 	}
 
